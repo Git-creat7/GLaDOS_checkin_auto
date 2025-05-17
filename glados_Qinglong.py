@@ -44,3 +44,11 @@ def main_handler(event, context):
 
 if __name__ == '__main__':
     start()
+    if sckey != "":
+        print("当前使用的 PUSHPLUS_TOKEN:", sckey)
+        res = requests.get('http://www.pushplus.plus/send?token=' + sckey + '&title=VPN签到成功'+'&content='+sendContent)
+        print("PushPlus 推送返回状态码:", res.status_code)
+        print("PushPlus 推送响应内容:", res.text)
+    else:
+        print("未设置 PUSHPLUS_TOKEN，不执行推送")
+
