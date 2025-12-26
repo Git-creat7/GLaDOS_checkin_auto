@@ -3,19 +3,19 @@ import requests, json, os
 # -------------------------------------------------------------------------------------------
 # 配置部分
 # -------------------------------------------------------------------------------------------
-# pushplus秘钥 申请地址 http://www.pushplus.plus
 sckey = os.environ.get("PUSHPLUS_TOKEN", "")
-# 推送内容初始化
 sendContent = ''
-# glados账号cookie
 cookies = os.environ.get("GLADOS_COOKIE", "").split("&")
-
 
 def start():
     global sendContent
     if not cookies or cookies[0] == "":
         print('未获取到COOKIE变量')
         return
+
+    # 用于存储标题的变量
+    push_title = "GLaDOS签到通知"
+    all_get_points = [] # 记录所有账号获得的点数
 
     url = "https://glados.rocks/api/user/checkin"
     url2 = "https://glados.rocks/api/user/status"
@@ -25,59 +25,57 @@ def start():
     payload = {'token': 'glados.one'}
 
     for cookie in cookies:
-        # 签到请求
-        checkin = requests.post(url, headers={'cookie': cookie, 'referer': referer, 'origin': origin,
-                                              'user-agent': useragent,
-                                              'content-type': 'application/json;charset=UTF-8'},
-                                data=json.dumps(payload))
-        # 状态查询
-        state = requests.get(url2,
-                             headers={'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent})
-
+        checkin = requests.post(url, headers={'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent, 'content-type': 'application/json;charset=UTF-8'}, data=json.dumps(payload))
+        state = requests.get(url2, headers={'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent})
+        
         try:
             state_json = state.json()
             checkin_json = checkin.json()
-
-            time = state_json['data']['leftDays'].split('.')[0]
             email = state_json['data']['email']
-
+            time = state_json['data']['leftDays'].split('.')[0]
+            
             if 'message' in checkin_json:
                 mess = checkin_json['message']
+                
+                # --- 1. 获取本次获得的点数 (用于标题) ---
+                # 逻辑：从 "Get 1 Points" 这种字符串中提取数字
+                import re
+                current_get = re.findall(r"Get (\d+) Points", mess)
+                if current_get:
+                    all_get_points.append(f"{current_get[0]}点")
+                else:
+                    all_get_points.append("0点")
 
-                # --- 核心：提取总点数 ---
-                # 只有签到成功或返回列表时才能拿到 balance
+                # --- 2. 获取总点数 (用于正文) ---
                 try:
-                    balance = checkin_json['list'][0]['balance']
-                    balance_str = f"----总点数({int(float(balance))})"
-                except (KeyError, IndexError):
-                    balance_str = "----总点数(今日已查)"
-
-                    # 格式化日志和推送内容
+                    balance = str(checkin_json['list'][0]['balance']).split('.')[0]
+                    balance_str = f"----总点数({balance})"
+                except:
+                    balance_str = "----总点数(已签到)"
+                
                 info = f"{email}----{mess}{balance_str}----剩余({time})天"
                 print(info)
                 sendContent += info + '\n'
             else:
-                msg = f"{email} cookie已失效"
-                print(msg)
-                sendContent += msg + '\n'
+                sendContent += f"{email} cookie已失效\n"
         except Exception as e:
             print(f"解析出错: {e}")
+
+    # --- 3. 动态构造标题 ---
+    if all_get_points:
+        # 如果有多个账号，标题会显示如：签到成功获得[1点, 1点]
+        push_title = f"签到获得: {', '.join(all_get_points)}"
 
     # 执行推送
     if sckey != "":
         push_url = 'http://www.pushplus.plus/send'
         data = {
             "token": sckey,
-            "title": "GLaDOS签到结果",
+            "title": push_title,  # 这里使用了动态标题
             "content": sendContent,
             "template": "txt"
         }
-        requests.post(push_url, data=json.dumps(data), headers={'Content-Type': 'application/json'})
-
-
-def main_handler(event, context):
-    return start()
-
+        requests.post(push_url, data=json.dumps(data), headers={'Content-Type':'application/json'})
 
 if __name__ == '__main__':
     start()
