@@ -63,8 +63,11 @@ def start():
             else:
                 sendContent += f"{email} cookie可能已失效，请重新获取\n"
         except Exception as e:
-            print(f"解析出错: {e}")
-            sendContent += f"账号解析出错，请检查网络或Cookie\n"
+            # 这里的修改可以帮你看到具体哪里报错了
+            print(f"账号处理出错，具体原因: {e}")
+            if 'state' in locals():
+                print(f"服务器返回内容: {state.text}") # 看看服务器到底返回了什么
+            continue
 
     # --- 推送逻辑部分 ---
     if all_get_points:
