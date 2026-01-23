@@ -1,4 +1,49 @@
 import requests,json,os
+
+def _iter_base_urls():
+    env = os.environ.get("GLADOS_BASE_URLS") or os.environ.get("GLADOS_BASE_URL") or ""
+    if env:
+        parts = [p.strip() for p in env.replace(";", ",").split(",")]
+    else:
+        parts = ["https://glados.cloud", "https://glados.rocks"]
+    seen = set()
+    for p in parts:
+        if not p:
+            continue
+        p = p.rstrip("/")
+        if p not in seen:
+            seen.add(p)
+            yield p
+
+def _resolve_base_url(cookie, useragent):
+    for base_url in _iter_base_urls():
+        url2 = f"{base_url}/api/user/status"
+        referer = f"{base_url}/console/checkin"
+        origin = base_url
+        try:
+            state = requests.get(
+                url2,
+                headers={
+                    'cookie': cookie,
+                    'referer': referer,
+                    'origin': origin,
+                    'user-agent': useragent,
+                },
+            )
+        except Exception:
+            continue
+        try:
+            state_json = state.json()
+        except Exception:
+            continue
+        data = state_json.get('data') or {}
+        if data.get('leftDays') is not None:
+            return base_url
+        msg = (state_json.get('message') or state_json.get('msg') or '').lower()
+        if "please checkin via" in msg:
+            continue
+        return base_url
+    return "https://glados.cloud"
 # -------------------------------------------------------------------------------------------
 # github workflows
 # -------------------------------------------------------------------------------------------
@@ -18,12 +63,13 @@ if __name__ == '__main__':
         print('未获取到COOKIE变量') 
         cookies = []
         exit(0)
-    url= "https://glados.rocks/api/user/checkin"
-    url2= "https://glados.rocks/api/user/status"
-    exchange_url = "https://glados.rocks/api/user/points/exchange"
-    referer = 'https://glados.rocks/console/checkin'
-    origin = "https://glados.rocks"
     useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
+    base_url = _resolve_base_url(cookies[0], useragent)
+    url= f"{base_url}/api/user/checkin"
+    url2= f"{base_url}/api/user/status"
+    exchange_url = f"{base_url}/api/user/points/exchange"
+    referer = f"{base_url}/console/checkin"
+    origin = base_url
     payload={
         'token': 'glados.one'
     }
