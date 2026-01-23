@@ -5,7 +5,7 @@ def _iter_base_urls():
     if env:
         parts = [p.strip() for p in env.replace(";", ",").split(",")]
     else:
-        parts = ["https://glados.cloud", "https://glados.rocks"]
+        parts = ["https://glados.cloud"]
     seen = set()
     for p in parts:
         if not p:
