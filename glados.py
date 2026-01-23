@@ -44,6 +44,19 @@ def _resolve_base_url(cookie, useragent):
             continue
         return base_url
     return "https://glados.cloud"
+
+def _extract_checkin_base_url(msg):
+    if not msg:
+        return None
+    lower = msg.lower()
+    idx = lower.find("http")
+    if idx == -1:
+        return None
+    url = msg[idx:].strip().split()[0]
+    url = url.rstrip(" .，,。-–—")
+    if url.startswith("http://") or url.startswith("https://"):
+        return url.rstrip("/")
+    return None
 # -------------------------------------------------------------------------------------------
 # github workflows
 # -------------------------------------------------------------------------------------------
@@ -112,6 +125,21 @@ if __name__ == '__main__':
             mess = checkin_json.get('message') or checkin_json.get('msg')
         except Exception:
             mess = None
+        if mess and "please checkin via" in mess.lower():
+            new_base = _extract_checkin_base_url(mess)
+            if new_base and new_base != base_url:
+                base_url = new_base
+                url= f"{base_url}/api/user/checkin"
+                url2= f"{base_url}/api/user/status"
+                exchange_url = f"{base_url}/api/user/points/exchange"
+                referer = f"{base_url}/console/checkin"
+                origin = base_url
+                checkin = requests.post(url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
+                try:
+                    checkin_json = checkin.json()
+                    mess = checkin_json.get('message') or checkin_json.get('msg')
+                except Exception:
+                    pass
 
         if mess:
             print(email+'----结果--'+mess+'----剩余('+time+')天')  # 日志输出

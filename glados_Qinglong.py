@@ -45,6 +45,19 @@ def _resolve_base_url(cookie, useragent):
         return base_url
     return "https://glados.cloud"
 
+def _extract_checkin_base_url(msg):
+    if not msg:
+        return None
+    lower = msg.lower()
+    idx = lower.find("http")
+    if idx == -1:
+        return None
+    url = msg[idx:].strip().split()[0]
+    url = url.rstrip(" .，,。-–—")
+    if url.startswith("http://") or url.startswith("https://"):
+        return url.rstrip("/")
+    return None
+
 # pushplus秘钥
 sckey = os.environ.get("PUSHPLUS_TOKEN", "")
 sendContent = ''
@@ -86,7 +99,18 @@ def start():
         email = data.get('email') or 'unknown'
         points = data.get('points') or data.get('point') or data.get('score') or data.get('balance')
         if 'message' in checkin.text:
-            mess = checkin.json()['message']
+            mess = checkin.json().get('message') or checkin.json().get('msg')
+            if mess and "please checkin via" in mess.lower():
+                new_base = _extract_checkin_base_url(mess)
+                if new_base and new_base != base_url:
+                    base_url = new_base
+                    url= f"{base_url}/api/user/checkin"
+                    url2= f"{base_url}/api/user/status"
+                    exchange_url = f"{base_url}/api/user/points/exchange"
+                    referer = f"{base_url}/console/checkin"
+                    origin = base_url
+                    checkin = requests.post(url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
+                    mess = checkin.json().get('message') or checkin.json().get('msg')
             print(email+'----'+mess+'----剩余('+time+')天')  # 日志输出
             global sendContent
             sendContent += email+'----'+mess+'----剩余('+time+')天\n'
