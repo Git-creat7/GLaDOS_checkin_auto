@@ -78,7 +78,7 @@ def start():
     referer = f"{base_url}/console/checkin"
     origin = base_url
     payload={
-        'token': 'glados.one'
+        'token': 'glados.cloud'
     }
     auto_exchange = os.environ.get("AUTO_EXCHANGE", os.environ.get("AUTO_EXCHANGE_200", "1")).lower() not in ("0", "false", "no")
     for cookie in cookies:
