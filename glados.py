@@ -4,11 +4,14 @@ import requests, json, os, re
 # 配置部分
 # -------------------------------------------------------------------------------------------
 sckey = os.environ.get("PUSHPLUS_TOKEN", "")
-sendContent = ''
+# 这里的 cookies 从环境变量获取
 cookies = os.environ.get("GLADOS_COOKIE", "").split("&")
 
 def start():
+    # 初始化推送内容
     global sendContent
+    sendContent = ''
+    
     if not cookies or cookies[0] == "":
         print('未获取到COOKIE变量')
         return
@@ -16,57 +19,100 @@ def start():
     push_title = "GLaDOS签到通知"
     all_get_points = [] 
 
-    # --- 域名已更新为 glados.cloud ---
     url = "https://glados.cloud/api/user/checkin"
     url2 = "https://glados.cloud/api/user/status"
     referer = 'https://glados.cloud/console/checkin'
     origin = "https://glados.cloud"
-    useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/102.0.0.0 Safari/537.36"
-    payload = {'token': 'glados.one'}
+    
+    # 更新了 User-Agent，防止被识别为旧脚本
+    useragent = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    
+    # 【关键修改】这里必须对应当前的域名后缀
+    payload = {'token': 'glados.cloud'}
 
     for cookie in cookies:
         try:
             # 执行签到
-            checkin = requests.post(url, headers={'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent, 'content-type': 'application/json;charset=UTF-8'}, data=json.dumps(payload))
-            # 获取状态
-            state = requests.get(url2, headers={'cookie': cookie, 'referer': referer, 'origin': origin, 'user-agent': useragent})
+            checkin = requests.post(
+                url, 
+                headers={
+                    'cookie': cookie, 
+                    'referer': referer, 
+                    'origin': origin, 
+                    'user-agent': useragent, 
+                    'content-type': 'application/json;charset=UTF-8'
+                }, 
+                data=json.dumps(payload)
+            )
             
+            # 获取状态
+            state = requests.get(
+                url2, 
+                headers={
+                    'cookie': cookie, 
+                    'referer': referer, 
+                    'origin': origin, 
+                    'user-agent': useragent
+                }
+            )
+            
+            # 调试输出：如果报错，取消下面这行的注释查看服务器返回的具体内容
+            # print(f"Checkin Response: {checkin.text}")
+
+            if checkin.status_code != 200:
+                print(f"请求失败，状态码: {checkin.status_code}")
+                continue
+
             state_json = state.json()
             checkin_json = checkin.json()
-            email = state_json['data']['email']
-            time = state_json['data']['leftDays'].split('.')[0]
             
+            # 容错处理：防止 state 接口获取失败导致报错
+            if 'data' in state_json:
+                email = state_json['data']['email']
+                time_str = state_json['data']['leftDays'].split('.')[0]
+            else:
+                email = "未知账号"
+                time_str = "未知"
+
             if 'message' in checkin_json:
                 mess = checkin_json['message']
                 
                 # --- 提取今日点数 ---
                 point_get = "0"
-                try:
-                    change = checkin_json['list'][0]['change']
-                    point_get = str(int(float(change)))
-                    all_get_points.append(f"{point_get}点")
-                except:
-                    current_get = re.findall(r"Get (\d+) Points", mess)
-                    point_get = current_get[0] if current_get else "0"
-                    all_get_points.append(f"{point_get}点")
+                # 优先尝试从 list 中读取（新版 API）
+                if 'list' in checkin_json and len(checkin_json['list']) > 0:
+                    try:
+                        change = checkin_json['list'][0]['change']
+                        point_get = str(int(float(change)))
+                    except:
+                        pass
+                
+                # 如果上面失败，尝试从 message 正则匹配
+                if point_get == "0":
+                    # 兼容中文和英文的 "Get 10 Points" 或 "获得 10 点"
+                    current_get = re.findall(r"(?:Get|获得)\s*(\d+)", mess)
+                    if current_get:
+                        point_get = current_get[0]
+                
+                all_get_points.append(f"{point_get}点")
 
                 # --- 获取总余额 ---
-                try:
-                    balance = str(checkin_json['list'][0]['balance']).split('.')[0]
-                    balance_str = f"----总点数({balance})"
-                except:
-                    balance_str = "----总点数(已签到)"
+                balance_str = "----总点数(未知)"
+                if 'list' in checkin_json and len(checkin_json['list']) > 0:
+                    try:
+                        balance = str(checkin_json['list'][0]['balance']).split('.')[0]
+                        balance_str = f"----总点数({balance})"
+                    except:
+                        pass
                 
-                info = f"{email}----{mess}----本次获得:{point_get}点{balance_str}----剩余({time})天"
+                info = f"{email}----{mess}----本次获得:{point_get}点{balance_str}----剩余({time_str})天"
                 print(info)
                 sendContent += info + '\n'
             else:
-                sendContent += f"{email} cookie可能已失效，请重新获取\n"
+                sendContent += f"{email} 签到失败，返回内容异常: {checkin_json}\n"
+        
         except Exception as e:
-            # 这里的修改可以帮你看到具体哪里报错了
-            print(f"账号处理出错，具体原因: {e}")
-            if 'state' in locals():
-                print(f"服务器返回内容: {state.text}") # 看看服务器到底返回了什么
+            print(f"账号处理出错: {e}")
             continue
 
     # --- 推送逻辑部分 ---
@@ -76,8 +122,11 @@ def start():
     if sckey != "":
         push_url = 'http://www.pushplus.plus/send'
         data = {"token": sckey, "title": push_title, "content": sendContent, "template": "txt"}
-        requests.post(push_url, data=json.dumps(data), headers={'Content-Type':'application/json'})
-        print("推送已发出")
+        try:
+            requests.post(push_url, data=json.dumps(data), headers={'Content-Type':'application/json'})
+            print("推送已发出")
+        except Exception as e:
+            print(f"推送失败: {e}")
     else:
         print("未配置 PUSHPLUS_TOKEN，跳过推送")
 
