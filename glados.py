@@ -105,11 +105,11 @@ def start():
                     except:
                         pass
                 
-                info = f"{email}----{mess}----本次获得:{point_get}点{balance_str}----剩余({time_str})天"
+                info = f"{mess}--本次获得:{point_get}点{balance_str}--剩余({time_str})天"
                 print(info)
                 sendContent += info + '\n'
             else:
-                sendContent += f"{email} 签到失败，返回内容异常: {checkin_json}\n"
+                sendContent += f" 签到失败，返回内容异常: {checkin_json}\n"
         
         except Exception as e:
             print(f"账号处理出错: {e}")
