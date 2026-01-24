@@ -167,7 +167,7 @@ if __name__ == '__main__':
             elif points_value >= 100:
                 exchange_points = 100
                 exchange_label = '100->10 days'
-
+        print(f"{email}----当前总积分: {points_value}----可兑换额度: {exchange_points}")
         if auto_exchange and left_days_value == 1 and exchange_points is not None:
             exchange_payload = {'points': exchange_points}
             exchange = requests.post(exchange_url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(exchange_payload))
