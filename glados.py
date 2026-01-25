@@ -57,6 +57,69 @@ def _extract_checkin_base_url(msg):
     if url.startswith("http://") or url.startswith("https://"):
         return url.rstrip("/")
     return None
+
+def _extract_points(payload):
+    def _coerce(val):
+        try:
+            return int(float(val))
+        except Exception:
+            return None
+
+    def _walk(obj):
+        if isinstance(obj, dict):
+            for key in (
+                "points",
+                "point",
+                "score",
+                "balance",
+                "totalPoints",
+                "totalPoint",
+                "total_points",
+                "total",
+                "leftPoints",
+                "left_points",
+                "remainPoints",
+                "remain_points",
+                "availablePoints",
+                "available_points",
+            ):
+                if key in obj and obj[key] is not None:
+                    return obj[key]
+            if "data" in obj:
+                val = _walk(obj["data"])
+                if val is not None:
+                    return val
+            for key in ("list", "items", "records"):
+                if key in obj:
+                    val = _walk(obj[key])
+                    if val is not None:
+                        return val
+        elif isinstance(obj, list):
+            for item in obj:
+                val = _walk(item)
+                if val is not None:
+                    return val
+        return None
+
+    raw = _walk(payload)
+    if raw is None:
+        return None
+    return _coerce(raw)
+
+def _fetch_points(base_url, headers):
+    for path in ("/api/user/points", "/api/user/points/summary", "/api/user/points/balance"):
+        try:
+            resp = requests.get(f"{base_url}{path}", headers=headers)
+        except Exception:
+            continue
+        try:
+            payload = resp.json()
+        except Exception:
+            continue
+        points = _extract_points(payload)
+        if points is not None:
+            return points
+    return None
 # -------------------------------------------------------------------------------------------
 # github workflows
 # -------------------------------------------------------------------------------------------
@@ -88,8 +151,9 @@ if __name__ == '__main__':
     }
     auto_exchange = os.environ.get("AUTO_EXCHANGE", os.environ.get("AUTO_EXCHANGE_200", "1")).lower() not in ("0", "false", "no")
     for cookie in cookies:
-        checkin = requests.post(url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
-        state =  requests.get(url2,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent})
+        headers = {'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent}
+        checkin = requests.post(url,headers={**headers,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
+        state =  requests.get(url2,headers=headers)
     #--------------------------------------------------------------------------------------------------------#  
         try:
             state_json = state.json()
@@ -102,9 +166,6 @@ if __name__ == '__main__':
         data = state_json.get('data') or {}
         email = data.get('email') or 'unknown'
         left_days = data.get('leftDays')
-        points = data.get('points')
-        if points is None:
-            points = data.get('point') or data.get('score') or data.get('balance')
         if left_days is None:
             msg = state_json.get('message') or state_json.get('msg') or str(state_json)
             print(email + '----状态获取失败--' + msg)
@@ -134,7 +195,8 @@ if __name__ == '__main__':
                 exchange_url = f"{base_url}/api/user/points/exchange"
                 referer = f"{base_url}/console/checkin"
                 origin = base_url
-                checkin = requests.post(url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
+                headers = {'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent}
+                checkin = requests.post(url,headers={**headers,'content-type':'application/json;charset=UTF-8'},data=json.dumps(payload))
                 try:
                     checkin_json = checkin.json()
                     mess = checkin_json.get('message') or checkin_json.get('msg')
@@ -148,12 +210,11 @@ if __name__ == '__main__':
             requests.get('http://www.pushplus.plus/send?token=' + sckey + '&content='+email+'cookie已失效')
             print(email + '----cookie已失效')  # 日志输出
 
-        points_value = None
-        try:
-            if points is not None:
-                points_value = int(float(points))
-        except Exception:
-            points_value = None
+        points_value = _extract_points(data)
+        if points_value is None:
+            points_value = _extract_points(state_json)
+        if points_value is None:
+            points_value = _fetch_points(base_url, headers)
 
         exchange_points = None
         exchange_label = None
