@@ -133,9 +133,21 @@ def _iter_exchange_urls(base_url):
             else:
                 yield f"{base_url}{p if p.startswith('/') else '/' + p}"
         return
+    yield f"{base_url}/api/user/exchange"
     yield f"{base_url}/api/user/points/exchange"
     yield f"{base_url}/api/user/points/convert"
     yield f"{base_url}/api/user/points/redeem"
+
+def _plan_type_for_points(points_value):
+    if points_value is None:
+        return None, None
+    if points_value >= 500:
+        return "plan500", "500->100 days"
+    if points_value >= 200:
+        return "plan200", "200->30 days"
+    if points_value >= 100:
+        return "plan100", "100->10 days"
+    return None, None
 # -------------------------------------------------------------------------------------------
 # github workflows
 # -------------------------------------------------------------------------------------------
@@ -232,21 +244,10 @@ if __name__ == '__main__':
         if points_value is None:
             points_value = _fetch_points(base_url, headers)
 
-        exchange_points = None
-        exchange_label = None
-        if points_value is not None:
-            if points_value >= 500:
-                exchange_points = 500
-                exchange_label = '500->100 days'
-            elif points_value >= 200:
-                exchange_points = 200
-                exchange_label = '200->30 days'
-            elif points_value >= 100:
-                exchange_points = 100
-                exchange_label = '100->10 days'
-        print(f"{email}----当前总积分: {points_value}----可兑换额度: {exchange_points}")
-        if auto_exchange and left_days_value == 1 and exchange_points is not None:
-            exchange_payload = {'points': exchange_points}
+        plan_type, exchange_label = _plan_type_for_points(points_value)
+        print(f"{email}----当前总积分: {points_value}----可兑换额度: {exchange_label}")
+        if auto_exchange and left_days_value == 1 and plan_type is not None:
+            exchange_payload = {'planType': plan_type}
             exchange_msg = None
             exchange_status = None
             exchange_text = None
