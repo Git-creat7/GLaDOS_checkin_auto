@@ -120,6 +120,22 @@ def _fetch_points(base_url, headers):
         if points is not None:
             return points
     return None
+
+def _iter_exchange_urls(base_url):
+    env = os.environ.get("GLADOS_EXCHANGE_URLS") or os.environ.get("GLADOS_EXCHANGE_URL") or ""
+    if env:
+        parts = [p.strip() for p in env.replace(";", ",").split(",")]
+        for p in parts:
+            if not p:
+                continue
+            if p.startswith("http://") or p.startswith("https://"):
+                yield p.rstrip("/")
+            else:
+                yield f"{base_url}{p if p.startswith('/') else '/' + p}"
+        return
+    yield f"{base_url}/api/user/points/exchange"
+    yield f"{base_url}/api/user/points/convert"
+    yield f"{base_url}/api/user/points/redeem"
 # -------------------------------------------------------------------------------------------
 # github workflows
 # -------------------------------------------------------------------------------------------
@@ -231,13 +247,28 @@ if __name__ == '__main__':
         print(f"{email}----当前总积分: {points_value}----可兑换额度: {exchange_points}")
         if auto_exchange and left_days_value == 1 and exchange_points is not None:
             exchange_payload = {'points': exchange_points}
-            exchange = requests.post(exchange_url,headers={'cookie': cookie ,'referer': referer,'origin':origin,'user-agent':useragent,'content-type':'application/json;charset=UTF-8'},data=json.dumps(exchange_payload))
             exchange_msg = None
-            try:
-                exchange_json = exchange.json()
-                exchange_msg = exchange_json.get('message') or exchange_json.get('msg') or str(exchange_json)
-            except Exception:
-                exchange_msg = exchange.text or 'exchange failed'
+            exchange_status = None
+            exchange_text = None
+            for candidate_url in _iter_exchange_urls(base_url):
+                exchange = requests.post(candidate_url,headers={**headers,'content-type':'application/json;charset=UTF-8'},data=json.dumps(exchange_payload))
+                exchange_status = exchange.status_code
+                try:
+                    exchange_json = exchange.json()
+                    exchange_msg = exchange_json.get('message') or exchange_json.get('msg') or str(exchange_json)
+                except Exception:
+                    exchange_text = exchange.text
+                    exchange_msg = exchange_text or 'exchange failed'
+                if exchange_msg and "not found" in str(exchange_msg).lower():
+                    continue
+                if exchange_status == 404:
+                    continue
+                break
+            if exchange_msg and "not found" in str(exchange_msg).lower():
+                detail = f"status={exchange_status}"
+                if exchange_text:
+                    detail += f", body={exchange_text[:160]}"
+                exchange_msg = f"{exchange_msg} ({detail})"
             print(email+'----exchange '+exchange_label+'--'+exchange_msg)
             sendContent += email+'----exchange '+exchange_label+'--'+exchange_msg+'\n'
      #--------------------------------------------------------------------------------------------------------#   
