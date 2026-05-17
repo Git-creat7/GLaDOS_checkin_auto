@@ -5,7 +5,12 @@ import requests, json, os, re
 # -------------------------------------------------------------------------------------------
 sckey = os.environ.get("PUSHPLUS_TOKEN", "")
 # 这里的 cookies 从环境变量获取
-cookies = os.environ.get("GLADOS_COOKIE", "").split("&")
+# 同时兼容换行符切分和 & 符号切分
+raw_cookie = os.environ.get("GLADOS_COOKIE", "")
+if "&" in raw_cookie:
+    cookies = raw_cookie.split("&")
+else:
+    cookies = [line.strip() for line in raw_cookie.split('\n') if line.strip()]
 
 def start():
     # 初始化推送内容
